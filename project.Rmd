@@ -1,0 +1,140 @@
+---
+title: "Practical Machine Learning Project"
+output: html_document
+---
+
+## Synopsis
+
+In this project, we aim to predict how good people practice sport given data collected from various devices. 
+A training data file is provided to be used for training and selecting a model for predicting results from the testing data.
+
+As we have to test and compare different models, we choose the k-folds cross validation method. We train and test our models on data defined in the original training data.
+
+From results, the Random Forest model is the best for this example. The accurancy of the model is about 99%. We give results on the testing data at the end of this report.
+
+## Load and preprocess Data
+
+We load the necessary packages.
+
+```{r warning=FALSE, message=FALSE}
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+We download both training and testing data from the given addresses, then load them.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+trainingData <- read.csv("pml-training.csv", na.strings = c("", "NA", "#DIV/0!"))
+testingData <- read.csv("pml-testing.csv", na.strings = c("", "NA", "#DIV/0!"))
+```
+
+Data need to be cleaned from columns containing mostly NA values.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+noNAColumns <- colSums(is.na(trainingData)) < nrow(trainingData) * 0.9
+training <- trainingData[,noNAColumns]
+testing <- testingData[,noNAColumns]
+```
+
+We Remove also the first column "X", as it's only the row number.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+training <- training[,-1]
+testing <- testing[,-1]
+```
+
+## Cross validation
+
+As we need to test different models, we need to do a cross validation.
+We choose to apply the k-folds method. The training data is splitted into k (in our case k=5) training and testing data. 
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+set.seed(200)
+nFolds <- 5
+folds <- createFolds(y=training$classe, k=nFolds, list = TRUE, returnTrain = FALSE)
+
+testData <- list()
+trainData <- list()
+
+for(i in 1:nFolds){
+    testIndexes <- folds[[i]]
+    testData[[i]] <- training[testIndexes,]
+    trainData[[i]] <- training[-testIndexes,]
+}
+```
+
+## Build the model
+
+We will try two models for prediction and compare the obtained results. The two models are decision trees and random forests.
+
+### Decision Trees
+
+First, we try the Decision Trees model. We apply the "rpart" command to the training data set and predict with the testing data set.
+We save the accurancy each time.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+rpartAcc <- numeric(nFolds)
+
+for(i in 1:nFolds){
+    rPartMod <- rpart(classe ~ ., data=trainData[[i]], method="class")
+    pred <- predict(rPartMod, testData[[i]], type="class")
+    res <- confusionMatrix(pred, testData[[i]]$classe)
+    rpartAcc[i] <- res$overall[1]
+}
+```
+
+The accurancy mean for this model is
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+mean(rpartAcc)
+```
+
+### Random forests
+Now we try the Random Forest model with the randomForest method.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+rfAcc <- numeric(nFolds)
+
+for(i in 1:nFolds){
+    rfMod <- randomForest(classe ~ ., data=trainData[[i]])
+    pred <- predict(rfMod, testData[[i]], type="class")
+    res <- confusionMatrix(pred, testData[[i]]$classe)
+    rfAcc[i] <- res$overall[1]
+}
+```
+
+The accurancy mean for the random forest model is
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+mean(rfAcc)
+```
+
+### Comparing models
+
+We plot the accurancies of both decision trees and random forest models.
+We can see that the random forest model accurancy is clearly better that the decision tree one.
+
+So, we'll use the random forest model for predicting the testing data.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+dat <- data.frame(Tries = c(1:nFolds, 1:nFolds), Accurency = c(rpartAcc, rfAcc), Model = c(rep("rpart",nFolds),rep("RF",nFolds)))
+
+g <- ggplot(dat, aes(x=Tries,y=Accurency, col=Model))
+g <- g + geom_line()
+g <- g + ggtitle("Decision Trees vs. Random Forest models")
+g
+```
+
+## Predicting on test data
+
+After slight changes on the testing data, we apply the random forest model and display the results.
+
+```{r warning=FALSE, message=FALSE, cache=TRUE}
+levels(testing$new_window) <- levels(training$new_window)
+levels(testing$cvtd_timestamp) <- levels(training$cvtd_timestamp)
+
+predTestRF <- predict(rfMod, newdata=testing)
+predTestRF
+```
+
